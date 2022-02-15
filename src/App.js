@@ -1,6 +1,22 @@
 import logo from './logo.svg';
 import './App.css';
 import React, { Component } from 'react';
+import classNames from 'classnames';
+import { sortBy } from 'lodash';
+import { connect } from 'react-redux';
+import { addToCart, updateCart, deleteFromCart }  from './redux/actions/cart-actions';
+import store from './redux/store.js';
+let unsubscribe = store.subscribe(() =>
+    console.log('unsubscribe123==>', store.getState())
+);
+
+const SORTS = {
+    NONE: list => list,
+    TITLE: list => sortBy(list, 'title'),
+    AUTHOR: list => sortBy(list, 'author'),
+    COMMENTS: list => sortBy(list, 'num_comments').reverse(),
+    POINTS: list => sortBy(list, 'points').reverse(),
+};
 const list = [
     {
         title: 'React',
@@ -50,13 +66,44 @@ class Button extends Component {
         );
     }
 }
-const Search = ({ value, onChange, children, onSubmit }) =>
-    <form onSubmit={onSubmit}>
-        <input type="text" value={value} onChange={onChange}/>
-        <button type="submit">
-            {children}
-        </button>
-    </form>
+// const Search = ({ value, onChange, children, onSubmit }) =>
+//     <form onSubmit={onSubmit}>
+//         <input type="text" value={value} onChange={onChange}/>
+//         <button type="submit">
+//             {children}
+//         </button>
+//     </form>
+class Search extends Component {
+    componentDidMount() {
+        if(this.input) {
+            this.input.focus();
+        }
+    }
+    render() {
+        const {
+            value,
+            onChange,
+            onSubmit,
+            children
+        } = this.props;
+        return (
+            <form onSubmit={onSubmit}>
+                <input
+                    type="text"
+                    value={value}
+                    onChange={onChange}
+                    ref={(node) => { this.input = node; }}
+                />
+                <button type="submit">
+                    {children}
+                </button>
+            </form> );
+    }
+}
+
+const Loading = () => <div>Loading ...</div>
+
+
 // class Search extends Component {
 //     constructor(prop) {
 //         console.log('Search==>', prop)
@@ -80,7 +127,6 @@ class Table extends Component {
     }
 
     render() {
-        console.log('tableRender==>')
 
         const largeColumn = { width: '40%',
         };
@@ -88,16 +134,37 @@ class Table extends Component {
         };
         const smallColumn = { width: '10%',
         };
-        const { list, pattern, onDismiss } = this.props;
+        const { list, onDismiss, sortKey, onSort, isSortReverse } = this.props;
+        const sortedList = SORTS[sortKey](list);
+        const reverseSortedList = isSortReverse
+            ? sortedList.reverse()
+            : sortedList;
+        console.log('tableRender==>', list)
+        let {shoppingCart: {cart: _content}} = store.getState()
+        console.log('_content', _content)
         return (
             <div className="table">
-                {list.map(item =>
+                <div className="table-header">
+                    {
+                        Object.keys(SORTS).map(sortItem => {
+                            return (
+                                <span key={sortItem} style={{ width: '20%' }}>
+                                    <Sort sortKey={sortItem} activeSortKey={sortKey} onSort={onSort}>{sortItem}</Sort>
+                                </span>
+                            )
+                        })
+                    }
+                </div>
+
+
+                {
+                    _content.map(item =>
                     <div key={item.objectID} className="table-row">
                         <span style={largeColumn}>
-                          <a href={item.url}>{item.title}</a>
+                          <a href={item.url}>{item.product}</a>
                         </span>
                         <span style={midColumn}>{item.author}</span>
-                        <span style={smallColumn}>{item.num_comments}</span>
+                        <span style={smallColumn}>{item.quantity}</span>
                         <span style={smallColumn}>{item.points}</span>
                         <span style={smallColumn}>
                             <Button onClick={() => onDismiss(item.objectID)}> Dismiss </Button>
@@ -110,18 +177,36 @@ class Table extends Component {
 }
 
 
+const Sort = ({ sortKey, onSort, children, activeSortKey }) => {
+    const sortClass = classNames(
+        'button-inline',
+        { 'button-active': sortKey === activeSortKey }
+    );
+
+    return <Button className={sortClass} onClick={() => onSort(sortKey)}>{children}</Button>
+}
+
+
+const withLoading = (Component) => ({ isLoading, ...rest }) =>
+    isLoading
+        ? <Loading />
+        : <Component { ...rest } />
+
+const ButtonWithLoading = withLoading(Button);
 
 class App extends Component {
     constructor(props) {
-        console.log('App===>')
         super(props);
-
+        let {shoppingCart: {cart}} = props;
         this.state = {
-            list,
+            list: [...cart],
             searchKey: '',
             searchTerm: DEFAULT_QUERY,
             result: null,
-            error: null
+            error: null,
+            isLoading: false,
+            sortKey: 'NONE',
+            isSortReverse: false,
         };
         this.needsToSearchTopStories = this.needsToSearchTopStories.bind(this);
         this.onClickMe = this.onClickMe.bind(this);
@@ -130,6 +215,15 @@ class App extends Component {
         this.onSearchSubmit = this.onSearchSubmit.bind(this);
         this.setSearchTopStories = this.setSearchTopStories.bind(this);
         this.fetchSearchTopStories = this.fetchSearchTopStories.bind(this);
+        this.onSort = this.onSort.bind(this);
+    }
+
+    onSort(sortKey) {
+        const isSortReverse = this.state.sortKey === sortKey && !this.state.isSortReverse;
+        this.setState({ sortKey, isSortReverse });
+        this.setState((prevState, props) => {
+            console.log('setState==>', prevState, props)
+        });
     }
 
     needsToSearchTopStories(searchTerm) {
@@ -137,14 +231,15 @@ class App extends Component {
     }
 
     onSearchSubmit(event) {
-        const { searchTerm } = this.state;
-        this.setState({ searchKey: searchTerm });
-        if (this.needsToSearchTopStories(searchTerm)) {
-            this.fetchSearchTopStories(searchTerm);
-        }
+        console.log('onSearchSubmit==>')
+        this.props.test()
+        // const { searchTerm } = this.state;
+        // this.setState({ searchKey: searchTerm });
+        // if (this.needsToSearchTopStories(searchTerm)) {
+        //     this.fetchSearchTopStories(searchTerm);
+        // }
         event.preventDefault();
     }
-
 
     setSearchTopStories(result) {
         const { hits, page } = result;
@@ -160,10 +255,13 @@ class App extends Component {
             results: {
                 ...results,
                 [searchKey]: { hits: updatedHits, page }
-            }
+            },
+            isLoading: false
         });
     }
     fetchSearchTopStories(searchTerm, page = 0) {
+        this.setState({ isLoading: true });
+
         fetch(`${PATH_BASE}${PATH_SEARCH}?${PARAM_SEARCH}${searchTerm}&${PARAM_PAGE}${page}&${PARAM_HPP}${DEFAULT_HPP}`)
             .then(response => response.json())
             .then(result => this.setSearchTopStories(result))
@@ -184,10 +282,12 @@ class App extends Component {
     }
 
     componentDidMount() {
-        const { searchTerm } = this.state;
-        this.setState({ searchKey: searchTerm });
-        console.log('componentDidMount==>')
-        this.fetchSearchTopStories(searchTerm);
+        console.log('this.props==>', this.props)
+        this.props.potential('test')
+        // const { searchTerm } = this.state;
+        // this.setState({ searchKey: searchTerm });
+        // console.log('componentDidMount==>')
+        // this.fetchSearchTopStories(searchTerm);
     }
 
     render() {
@@ -195,19 +295,24 @@ class App extends Component {
         const {
             searchTerm,
             results,
+            list,
             searchKey,
-            error
+            error,
+            isLoading,
+            sortKey,
+            isSortReverse
         } = this.state;
         const page = (
             results &&
             results[searchKey] &&
             results[searchKey].page
         ) || 0;
-        const list = (
-            results &&
-            results[searchKey] &&
-            results[searchKey].hits
-        ) || [];
+        // const list = (
+        //     results &&
+        //     results[searchKey] &&
+        //     results[searchKey].hits
+        // ) || [];
+
         return (
             // <div className="App">
             //     <button onClick={this.onClickMe()} type="button">Click Me</button>
@@ -235,14 +340,13 @@ class App extends Component {
                         ? <div className="interactions">
                             <p>Something went wrong.</p>
                         </div> :
-                        list && <Table list={list} pattern={searchTerm} onDismiss={this.onDismiss}/>
+                        list && <Table list={list} isSortReverse={isSortReverse} sortKey={sortKey} onSort={this.onSort} pattern={searchTerm} onDismiss={this.onDismiss}/>
                     }
                     <div className="interactions">
-                        <Button onClick={() => this.fetchSearchTopStories(searchTerm, page + 1)}>
+                        <ButtonWithLoading isLoading={isLoading} onClick={() => this.fetchSearchTopStories(searchKey, page + 1)}>
                             More
-                        </Button>
+                        </ButtonWithLoading>
                     </div>
-
                 </div>
         )
     }
@@ -281,4 +385,20 @@ class App extends Component {
 //   );
 // }
 
-export default App;
+export default connect((state) => {
+    //获取到仓库的state
+    return state
+}, (dispatch) => {
+    //用dispatch触发仓库中的action
+    return {
+        potential(params) {
+            console.log('potential==>', params)
+            dispatch(addToCart('Coffee 500gm', 1, 250))
+        },
+        test() {
+            dispatch(addToCart('Juice 2L', 1, 250));
+        }
+    }
+})(App);
+
+// export default ;
